@@ -48,9 +48,9 @@ void DAC(void * pvParameters);
 
 // ==================================================================================
 // --- Mapeamento de Hardware ---
-#define sensor_VA 13
-#define sensor_VB 12
-#define servo 18
+#define sensor_VA 12
+#define sensor_VB 27
+#define servo 33
 
 // --- Variáveis Globais ---
 int     timer_val=15;                               //valor de contagem do timer
@@ -65,7 +65,7 @@ void do_send(osjob_t* j);
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 60;
+const unsigned TX_INTERVAL = 10;
 
 
 
@@ -258,6 +258,10 @@ void realizaLimpeza () {
 };
 
 void envia_Dados (uint32_t leitura1, uint32_t leitura2, int estado) {
+  Serial.println("Leitura1");
+  Serial.println(leitura1);
+  Serial.println("leitura2");
+  Serial.println(leitura2);
   mydata[0] = (leitura1 >> 16) & 0xFF;
   mydata[1] = (leitura1 >> 8) & 0xFF;
   mydata[2] = leitura1 & 0xFF;
@@ -538,7 +542,12 @@ void gerenciaLeitura( void * pvParameters ) {
         //reset de dados
         nvs_flash_erase_partition("nvs"); 
       }
-      envia_Dados(valorArmazenado, leitura2, sujo);
+      // envia_Dados(valorArmazenado, leitura2, sujo);
+        Serial.println("antes Leitura1");
+       Serial.println(valorArmazenado);
+      Serial.println("antes leitura2");
+      Serial.println(leitura2);
+      envia_Dados(100.0*valorArmazenado, 100.0*leitura2, sujo);
       timer_val = 15; //somente setar novo tempo quando nescessario aguardar 15 min
       primeira_leitura = 0;
 
