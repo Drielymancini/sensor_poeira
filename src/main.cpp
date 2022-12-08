@@ -29,7 +29,6 @@
 /* Chave atribuida ao valor a ser escrito e lido
    da partição NVS */
 #define CHAVE_NVS  "dado_leitura"
-
 /* Protótipos */
 void grava_dado_nvs(float dado);
 float le_dado_nvs(void);
@@ -39,12 +38,10 @@ float le_dado_nvs(void);
 // *************************** CRIAÇÃO DOS HANDLES DAS TAREFAS 1, 2 , 3 E 4 *****************************//
 
 TaskHandle_t TaskGerenciaLeitura;
-TaskHandle_t TaskDAC;
 //===================================================================================================
 
 // *************************** FUNÇÕES DE TASK ***********************************************//
 void gerenciaLeitura(void * pvParameters);
-void DAC(void * pvParameters);
 
 // ==================================================================================
 // --- Mapeamento de Hardware ---
@@ -59,69 +56,33 @@ bool    timer_running=1,                              //flag para indicar quando
 int sujo = 0;
 uint8_t val=0;
 bool    ctrl=0;
-static uint8_t mydata[7];
+static uint8_t mydata[8];
 static osjob_t sendjob;
 void do_send(osjob_t* j);
+int flag_start = 1;
+float REFERENCIA = 0.05;
+float REFERENCIA2 = 0.05;
 
-// Schedule TX every this many seconds (might become longer due to duty
-// cycle limitations).
 const unsigned TX_INTERVAL = 10;
 
 
+// ==================================================================================
+// --- Configuração LoraWan ---
 
-static const u1_t PROGMEM APPEUI[8]= { 0x49, 0x87, 0x59, 0x54, 0x56, 0x84, 0x79, 0x88 };
+static const u1_t PROGMEM APPEUI[8]= {0x49, 0x87, 0x59, 0x54, 0x56, 0x84, 0x79, 0x88 };
 void os_getArtEui (u1_t* buf) { memcpy_P(buf, APPEUI, 8);}
 
 // This should also be in little endian format, see above.
-static const u1_t PROGMEM DEVEUI[8]= {0x59, 0x74, 0x05, 0xD0, 0x7E, 0xD5, 0xB3, 0x70 };
+static const u1_t PROGMEM DEVEUI[8]= {0x59, 0x74, 0x05, 0xD0, 0x7E, 0xD5, 0xB3, 0x70};
 void os_getDevEui (u1_t* buf) { memcpy_P(buf, DEVEUI, 8);}
 
 // This key should be in big endian format (or, since it is not really a
 // number but a block of memory, endianness does not really apply). In
 // practice, a key taken from the TTN console can be copied as-is.
-static const u1_t PROGMEM APPKEY[16] = {0xC5, 0xAA, 0xC9, 0x77, 0x2F, 0xD8, 0x73, 0x56, 0x36, 0xBB, 0x04, 0x5E, 0xCC, 0x05, 0x10, 0xA3 };
+static const u1_t PROGMEM APPKEY[16] = { 0xC5, 0xAA, 0xC9, 0x77, 0x2F, 0xD8, 0x73, 0x56, 0x36, 0xBB, 0x04, 0x5E, 0xCC, 0x05, 0x10, 0xA3};
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
-
 // ==================================================================================
 // --- Mapeamento de funções ---
-
-uint8_t  sine_wave[256] = {
-  0x80, 0x83, 0x86, 0x89, 0x8C, 0x90, 0x93, 0x96,
-  0x99, 0x9C, 0x9F, 0xA2, 0xA5, 0xA8, 0xAB, 0xAE,
-  0xB1, 0xB3, 0xB6, 0xB9, 0xBC, 0xBF, 0xC1, 0xC4,
-  0xC7, 0xC9, 0xCC, 0xCE, 0xD1, 0xD3, 0xD5, 0xD8,
-  0xDA, 0xDC, 0xDE, 0xE0, 0xE2, 0xE4, 0xE6, 0xE8,
-  0xEA, 0xEB, 0xED, 0xEF, 0xF0, 0xF1, 0xF3, 0xF4,
-  0xF5, 0xF6, 0xF8, 0xF9, 0xFA, 0xFA, 0xFB, 0xFC,
-  0xFD, 0xFD, 0xFE, 0xFE, 0xFE, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0xFE, 0xFE, 0xFD,
-  0xFD, 0xFC, 0xFB, 0xFA, 0xFA, 0xF9, 0xF8, 0xF6,
-  0xF5, 0xF4, 0xF3, 0xF1, 0xF0, 0xEF, 0xED, 0xEB,
-  0xEA, 0xE8, 0xE6, 0xE4, 0xE2, 0xE0, 0xDE, 0xDC,
-  0xDA, 0xD8, 0xD5, 0xD3, 0xD1, 0xCE, 0xCC, 0xC9,
-  0xC7, 0xC4, 0xC1, 0xBF, 0xBC, 0xB9, 0xB6, 0xB3,
-  0xB1, 0xAE, 0xAB, 0xA8, 0xA5, 0xA2, 0x9F, 0x9C,
-  0x99, 0x96, 0x93, 0x90, 0x8C, 0x89, 0x86, 0x83,
-  0x80, 0x7D, 0x7A, 0x77, 0x74, 0x70, 0x6D, 0x6A,
-  0x67, 0x64, 0x61, 0x5E, 0x5B, 0x58, 0x55, 0x52,
-  0x4F, 0x4D, 0x4A, 0x47, 0x44, 0x41, 0x3F, 0x3C,
-  0x39, 0x37, 0x34, 0x32, 0x2F, 0x2D, 0x2B, 0x28,
-  0x26, 0x24, 0x22, 0x20, 0x1E, 0x1C, 0x1A, 0x18,
-  0x16, 0x15, 0x13, 0x11, 0x10, 0x0F, 0x0D, 0x0C,
-  0x0B, 0x0A, 0x08, 0x07, 0x06, 0x06, 0x05, 0x04,
-  0x03, 0x03, 0x02, 0x02, 0x02, 0x01, 0x01, 0x01,
-  0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x03,
-  0x03, 0x04, 0x05, 0x06, 0x06, 0x07, 0x08, 0x0A,
-  0x0B, 0x0C, 0x0D, 0x0F, 0x10, 0x11, 0x13, 0x15,
-  0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24,
-  0x26, 0x28, 0x2B, 0x2D, 0x2F, 0x32, 0x34, 0x37,
-  0x39, 0x3C, 0x3F, 0x41, 0x44, 0x47, 0x4A, 0x4D,
-  0x4F, 0x52, 0x55, 0x58, 0x5B, 0x5E, 0x61, 0x64,
-  0x67, 0x6A, 0x6D, 0x70, 0x74, 0x77, 0x7A, 0x7D
-};
-
-
-
 /* Função: grava na NVS um dado do tipo interio 32-bits
  *         sem sinal, na chave definida em CHAVE_NVS
  * Parâmetros: dado a ser gravado
@@ -136,7 +97,6 @@ void grava_dado_nvs(float dado)
     //gcvt(dado, 6, dado_8b)
     dtostrf(dado, 6, 2, dado_8b);
     //char dado_convertido = dado_8b[5];
-
 
 
     err = nvs_flash_init_partition("nvs");
@@ -159,17 +119,6 @@ void grava_dado_nvs(float dado)
     Serial.println("GRAVADO : ");  
     Serial.println("\n");
     Serial.println(dado_8b);  
-     //Serial.println("\n");
-    //Serial.println(dado_8b[1]);  
-    // Serial.println("\n");
-   // Serial.println(dado_8b[2]);  
-   //  Serial.println("\n");
-    //Serial.println(dado_8b[3]);  
-     //    Serial.println("\n");
-   //Serial.println(dado_8b[4]);  
-     //Serial.println("\n");
-    //Serial.println(dado_8b[5]);
- 
     if (err != ESP_OK)
     {
         Serial.println("[ERRO] Erro ao gravar horimetro");                   
@@ -231,20 +180,20 @@ float le_dado_nvs(void)
 } //end le_dado_nvs
 
 float medirLDR () {
-  
 
   static float volts_f = 0.0;
-  volts_f = (analogRead(sensor_VB)-analogRead(sensor_VA))* 0.0008058; //calculada a tensao a partir da média
-  
-  return volts_f;
-  //Serial.println(analogRead(sensor_VB)-analogRead(sensor_VA));
-  //return (analogRead(sensor_VB)-analogRead(sensor_VA));
-}
+  volts_f = fabs(analogRead(sensor_VA) - analogRead(sensor_VB))*(3.3/4095); //calculada a tensao a partir da média
+    
+    static float volts_ref = 0.0;
+    volts_ref = ((analogRead(sensor_VA) * 1.00190363341459) - analogRead(sensor_VB))*(3.3/4095); //calculada a tensao a partir da média
 
-void leituraCAP () {
-  Serial.println("leituraCAP");
-  Serial.println("\n");
-};
+  Serial.println("volts_ref");
+  Serial.println(volts_ref);
+ // Serial.println("ldr2");
+ // Serial.println(ldr2);
+  //return (analogRead(sensor_VB)-analogRead(sensor_VA));
+  return volts_f;
+}
 
 void realizaLimpeza () {
   ledcWrite(9,4095);
@@ -262,6 +211,8 @@ void envia_Dados (uint32_t leitura1, uint32_t leitura2, int estado) {
   Serial.println(leitura1);
   Serial.println("leitura2");
   Serial.println(leitura2);
+
+
   mydata[0] = (leitura1 >> 16) & 0xFF;
   mydata[1] = (leitura1 >> 8) & 0xFF;
   mydata[2] = leitura1 & 0xFF;
@@ -271,28 +222,32 @@ void envia_Dados (uint32_t leitura1, uint32_t leitura2, int estado) {
   mydata[5] = leitura2 & 0xFF;
 
   
-  mydata[6] = (estado >> 8) & 0xFF;
-  
-  
+ // mydata[6] = (estado >> 8) & 0xFF;
+  uint16_t auxestado = estado;
+  mydata[6] = (auxestado >> 8) & 0xFF;
+  mydata[7] = auxestado & 0xFF;
+
   Serial.println("envia_Dados");
   Serial.println("\n");
+  int idteste = ((mydata[6] << 8)) + mydata[7];  
+  Serial.println("decode estado");
+  Serial.println(idteste);
 
 };
 void compara (float val1, float val2) {
- 
-  if(val1>val2)
+  Serial.println("COMPARA");
+  Serial.println(val1);
+  Serial.println(val2);
+  Serial.println(REFERENCIA);
+  Serial.println(REFERENCIA2);
+
+  if (val1 < val2 && (val2 > REFERENCIA && val2 > REFERENCIA2) )
   {
     sujo = 1;
-  }
-
-   if(val1<=val2)
+  }else
   {
     sujo = 0;
   }
- 
- 
-  //Serial.println("temporizador");
-  //Serial.println("\n");
 };
 
 const lmic_pinmap lmic_pins = {
@@ -437,7 +392,7 @@ void do_send(osjob_t* j){
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+        LMIC_setTxData2(1, mydata, sizeof(mydata), 0);
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
@@ -487,18 +442,6 @@ void setup() {
 
   delay(500);
 
-  // Cria uma tarefa que será executada na função gerenciaLeitura(), com  prioridade 1 e execução no núcleo 0
-  xTaskCreatePinnedToCore(
-    DAC,                  /* Função da tarefa */
-    "TaskDAC",           /* nome da tarefa */
-    10000,              /* Tamanho (bytes) */
-    NULL,              /* parâmetro da tarefa */
-    1,                /* prioridade da tarefa */
-    &TaskDAC,        /* observa a tarefa criada */
-    1);             /* tarefa alocada ao núcleo 0 */
-
-  delay(500);
-
 }//end setup
 
 // *************************** DEFINIÇÃO DA TAREFA gerenciaLeitura  *****************************//
@@ -512,6 +455,9 @@ void gerenciaLeitura( void * pvParameters ) {
     timer_val=0;    
 
     if(primeira_leitura == 0){
+    if(flag_start){
+      REFERENCIA = medirLDR();
+    }
       float leitura1 = medirLDR();
       grava_dado_nvs(leitura1);
       primeira_leitura = 1;
@@ -520,7 +466,13 @@ void gerenciaLeitura( void * pvParameters ) {
       Serial.println("\n");
     } else {
       realizaLimpeza();
-      float leitura2 = medirLDR();
+      
+      float leitura2 = medirLDR(); 
+         if(flag_start){
+      REFERENCIA2 = leitura2;
+      flag_start = 0;
+    }
+
       Serial.println(leitura2);
       Serial.println("SEGUNDA LEITURA");
       Serial.println("\n");
@@ -547,28 +499,18 @@ void gerenciaLeitura( void * pvParameters ) {
        Serial.println(valorArmazenado);
       Serial.println("antes leitura2");
       Serial.println(leitura2);
+       Serial.println("estado");
+  Serial.println(sujo);
       envia_Dados(100.0*valorArmazenado, 100.0*leitura2, sujo);
       timer_val = 15; //somente setar novo tempo quando nescessario aguardar 15 min
       primeira_leitura = 0;
+      sujo = 0;
 
     }
   } //end if !timer_val
     vTaskDelay(1000);
   }
 }
-
-// *************************** DEFINIÇÃO DA TAREFA gerenciaLeitura  *****************************//
-void DAC( void * pvParameters ) {
-  for (;;) { 
-  
-  val = val+6;
- 
-  dacWrite(26,sine_wave[val]);
-  delayMicroseconds(1);// Cria um loop infinito, para a tarefa sempre ser executada quando estiver disponível.
-    //vTaskDelay(1000);
-  }
-}
-
 // *************************** DEFINIÇÃO LOOP *****************************//
 void loop() {
     os_runloop_once();
